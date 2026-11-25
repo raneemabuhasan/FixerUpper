@@ -1,0 +1,593 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+:root {
+  font-family: 'DM Sans', sans-serif;
+  color: #243044;
+  background: #f6f7f9;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+button, .button {
+  border: 0;
+  border-radius: 12px;
+  padding: 14px 22px;
+  background: #275fe5;
+  color: white;
+  cursor: pointer;
+  display: inline-block;
+  font-weight: 600;
+}
+
+button:disabled {
+  opacity: .45;
+  cursor: wait;
+}
+
+button:hover, .button:hover {
+  filter: brightness(.94);
+}
+
+a:focus-visible, button:focus-visible {
+  outline: 3px solid #88b8ff;
+  outline-offset: 4px;
+}
+
+h1, h2, h3 {
+  font-family: Manrope, sans-serif;
+  letter-spacing: -.04em;
+}
+
+h1 {
+  font-size: 42px;
+  margin: 16px 0;
+}
+
+h2 {
+  font-size: 23px;
+}
+
+h3 {
+  font-size: 16px;
+}
+
+p {
+  line-height: 1.6;
+}
+
+small {
+  font-size: 11px;
+  letter-spacing: .1em;
+  color: #7b8799;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 22px 34px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.brand {
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -1px;
+}
+
+.landing {
+  background: #0d1117;
+  color: #f1f3f5;
+}
+
+.landing header {
+  justify-content: space-between;
+  border: 0;
+}
+
+.landing header>a:last-child {
+  font-size: 13px;
+  color: #abb4c1;
+}
+
+.hero {
+  min-height: 76vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  padding: 80px 20px;
+}
+
+.hero h1 {
+  font-size: clamp(48px, 8vw, 116px);
+  font-weight: 500;
+  letter-spacing: -.065em;
+  margin: 30px 0;
+}
+
+.hero h1 span {
+  display: inline-block;
+  margin: 0 .1em;
+  animation: arrive 1s both;
+}
+
+.hero h1 span:last-child {
+  color: #8bafff;
+}
+
+.hero p {
+  color: #909aaa;
+  font-size: 19px;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 26px;
+  transition: opacity .7s;
+}
+
+.waiting {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.secondary {
+  background: #e9edf4;
+  color: #283c58;
+  margin-left: 8px;
+}
+
+.landing .secondary {
+  background: #1b232f;
+  color: #e9edf4;
+}
+
+.landing footer {
+  padding: 28px 40px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: .13em;
+  color: #737f90;
+  border-bottom: 1px solid #252d38;
+}
+
+#how {
+  padding: 100px 8%;
+  scroll-margin-top: 30px;
+}
+
+#how h2 {
+  font-size: 44px;
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 40px;
+  margin-top: 50px;
+}
+
+.steps p {
+  color: #939eae;
+}
+
+.signin {
+  padding: 35px;
+  min-height: 100vh;
+  background: radial-gradient(at 80% 10%, #e5edff, transparent 55%);
+}
+
+.signin .card {
+  max-width: 490px;
+  margin: 12vh auto;
+}
+
+.signin h1 {
+  font-size: 34px;
+}
+
+.signin button {
+  width: 100%;
+  margin-top: 20px;
+}
+
+.muted {
+  color: #8993a3;
+  font-size: 13px;
+}
+
+.card {
+  background: white;
+  border: 1px solid #e2e7ee;
+  border-radius: 22px;
+  padding: 28px;
+}
+
+.card+.card {
+  margin-top: 24px;
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 22px 0;
+}
+
+input, select, textarea {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #dfe4ec;
+  border-radius: 10px;
+  background: #f9fafc;
+  color: #243044;
+  margin-top: 9px;
+}
+
+textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.workspace {
+  display: flex;
+  min-height: 100vh;
+}
+
+aside {
+  width: 100px;
+  flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid #e3e7ee;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 20px;
+  padding: 25px 10px;
+  position: fixed;
+  height: 100vh;
+}
+
+aside a {
+  font-size: 25px;
+  text-align: center;
+  width: 80px;
+  padding: 12px 4px;
+  border-radius: 14px;
+  color: #768397;
+}
+
+aside a:hover {
+  background: #edf3ff;
+  color: #275fe5;
+}
+
+aside span {
+  display: block;
+  font-size: 10px;
+  margin-top: 7px;
+}
+
+.logo {
+  background: #e5eeff;
+  color: #275fe5!important;
+  margin-bottom: 20px;
+}
+
+.sidebar-bottom {
+  margin-top: auto;
+  font-size: 8px;
+  line-height: 1.7;
+  color: #a3adba;
+  letter-spacing: .1em;
+}
+
+.workspace-body {
+  margin-left: 100px;
+  width: calc(100% - 100px);
+}
+
+.workspace header {
+  height: 90px;
+  background: white;
+}
+
+.workspace header strong {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.workspace header input {
+  margin: 0 auto;
+  max-width: 420px;
+  border-radius: 30px;
+}
+
+.workspace header .button {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.avatar {
+  border-radius: 50%;
+  background: #eae5f4;
+  color: #655279;
+  width: 42px;
+  padding: 12px;
+}
+
+.content {
+  max-width: 1350px;
+  margin: auto;
+  padding: 48px 5%;
+}
+
+.subtitle {
+  color: #8390a1;
+  font-size: 16px;
+  margin-bottom: 40px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 24px;
+}
+
+.dashboard-grid .card {
+  margin: 0;
+}
+
+.card-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+
+.card-heading h2 {
+  margin: 0;
+}
+
+.card-heading a {
+  color: #3868d3;
+  font-size: 12px;
+}
+
+.count {
+  font-size: 58px;
+  font-family: Manrope;
+  font-weight: 700;
+  margin: 25px 0;
+}
+
+.count span {
+  font: 13px 'DM Sans';
+  color: #8993a3;
+  margin-left: 15px;
+}
+
+.ticket {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 0;
+  border-top: 1px solid #edf0f4;
+}
+
+.ticket>div {
+  flex: 1;
+}
+
+.ticket h3 {
+  margin: 7px 0;
+}
+
+.ticket p {
+  font-size: 12px;
+  color: #8792a2;
+  margin: 0;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #edf2ff;
+  color: #5076bb;
+  text-transform: capitalize;
+  letter-spacing: 0;
+}
+
+.green {
+  background: #e0f4eb;
+  color: #318365;
+}
+
+.attention {
+  background: linear-gradient(145deg, #edf3ff, #fafcff);
+}
+
+.attention h2 {
+  font-size: 32px;
+  margin-top: 28px;
+}
+
+.attention p {
+  color: #7b8ba4;
+  font-size: 14px;
+}
+
+.attention .badge {
+  margin-top: 20px;
+  background: white;
+}
+
+.attention .button {
+  margin-top: 20px;
+  font-size: 13px;
+}
+
+.activity {
+  grid-column: 1/-1;
+}
+
+.event {
+  display: block;
+  border-top: 1px solid #e9edf3;
+  padding: 22px 0;
+  margin-top: 15px;
+}
+
+.event p {
+  margin-bottom: 0;
+  font-size: 14px;
+}
+
+.intake {
+  max-width: 760px;
+}
+
+.bubble, .notice {
+  background: #eef3ff;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 20px 0;
+}
+
+.notice button {
+  margin: 8px;
+}
+
+.empty {
+  color: #8993a3;
+  padding: 30px;
+}
+
+.intake>button {
+  margin-top: 15px;
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+    filter: blur(9px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@media(prefers-reduced-motion:reduce) {
+  * {
+    animation: none!important;
+    transition: none!important;
+  }
+
+  .actions.waiting {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media(max-width:850px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .activity {
+    grid-column: auto;
+  }
+
+  .workspace header strong {
+    display: none;
+  }
+
+  .workspace header {
+    padding: 15px;
+    gap: 10px;
+  }
+
+  .workspace header input {
+    min-width: 0;
+  }
+
+  .workspace header .button {
+    padding: 12px;
+    font-size: 10px;
+  }
+
+  .content {
+    padding: 32px 22px;
+  }
+
+  h1 {
+    font-size: 30px;
+  }
+
+  .ticket {
+    flex-wrap: wrap;
+  }
+
+  .steps {
+    grid-template-columns: 1fr;
+  }
+
+  aside {
+    width: 72px;
+  }
+
+  aside a {
+    width: 60px;
+  }
+
+  .workspace-body {
+    margin-left: 72px;
+    width: calc(100% - 72px);
+  }
+
+  .landing footer {
+    gap: 20px;
+  }
+
+  .hero h1 span {
+    display: block;
+  }
+
+  .hero {
+    padding: 45px 20px;
+  }
+
+  .signin {
+    padding: 20px;
+  }
+
+  .card {
+    padding: 22px;
+  }
+}
