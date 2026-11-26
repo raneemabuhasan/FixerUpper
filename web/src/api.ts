@@ -1,5 +1,5 @@
 import type { Ticket } from '../../shared/types';
-import { confirmRepair } from '../../shared/workflow';
+import { cancelRequest, confirmRepair } from '../../shared/workflow';
 
 export const residents = [{ id: 'mina', name: 'Mina', unit: '204' }, { id: 'alex', name: 'Alex', unit: '108' }];
 const now = new Date().toISOString();
@@ -19,6 +19,12 @@ export const api = {
     return read().filter(t => t.residentId === residentId);
   }, async confirm(id: string, residentId: string, yes: boolean) {
     save(read().map(t => t.id === id && t.residentId === residentId ? confirmRepair(t, yes) : t));
+  }, async cancel(id: string, residentId: string) {
+    const tickets = read();
+    const ticket = tickets.find(t => t.id === id && t.residentId === residentId);
+    if (!ticket) throw new Error('Request not found.');
+    const cancelled = cancelRequest(ticket);
+    save(tickets.map(t => t.id === id && t.residentId === residentId ? cancelled : t));
   }, async create(residentId: string, description: string, location: string) {
     const at = new Date().toISOString();
     const t: Ticket = { id: `RES-${Date.now()}`, residentId, title: description, description, location, category: 'Maintenance', status: 'submitted', updatedAt: at, nextAction: 'Maintenance will review your request', events: [{ at, kind: 'resident', text: 'Request submitted through demo intake.' }] };

@@ -1,4 +1,4 @@
-export type Status = 'submitted' | 'assigned' | 'awaiting update' | 'awaiting resident confirmation' | 'resolved';
+export type Status = 'submitted' | 'assigned' | 'in progress' | 'awaiting update' | 'awaiting resident confirmation' | 'resolved' | 'cancelled';
 
 export interface Resident {
   id: string;
