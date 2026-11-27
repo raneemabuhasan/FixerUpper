@@ -3,7 +3,7 @@ import { transaction, type DB } from '../db/connection.ts';
 import { getNow } from '../db/clock.ts';
 import { getTicket, type TicketRecord } from '../db/tickets.ts';
 import { appendEvent, type EventKind, type EventType } from './events.ts';
-import { WorkflowError } from './errors.ts';
+import { WorkflowError, parseInput } from './errors.ts';
 import { OPEN_STATUSES, isTerminal, type Status } from './status.ts';
 
 export const actorSchema = z.object({
@@ -12,13 +12,14 @@ export const actorSchema = z.object({
 });
 export type Actor = z.infer<typeof actorSchema>;
 
-const note = z.string().trim().min(1).max(2000).optional();
+export const noteSchema = z.string().trim().min(1).max(2000);
+const note = noteSchema.optional();
 
 export const actionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('assign'), assigneeId: z.string().min(1) }),
   z.object({ type: z.literal('inspected_only'), note }),
   z.object({ type: z.literal('repair_attempted'), note }),
-  z.object({ type: z.literal('request_confirmation') }),
+  z.object({ type: z.literal('request_confirmation'), note }),
   z.object({ type: z.literal('resident_confirm'), resolved: z.boolean() }),
   z.object({ type: z.literal('cancel'), reason: note }),
 ]);
@@ -36,12 +37,6 @@ export const RULES: { [K in ActionType]: { actor: 'resident' | 'staff'; from: re
 };
 
 const KIND: Record<Actor['type'], EventKind> = { resident: 'resident', staff: 'worker', ai: 'system', system: 'system' };
-
-function parse<T>(schema: z.ZodType<T>, value: unknown, label: string): T {
-  const result = schema.safeParse(value);
-  if (!result.success) throw new WorkflowError('INVALID_INPUT', `Invalid ${label}: ${z.prettifyError(result.error)}`);
-  return result.data;
-}
 
 function authorize(db: DB, ticket: TicketRecord, actor: Actor, required: 'resident' | 'staff') {
   if (required === 'resident') {
@@ -65,8 +60,8 @@ function hasRepairAttemptSinceReopen(db: DB, ticketId: string): boolean {
 // Validates the action, updates the ticket and appends its event(s) atomically.
 // Throws WorkflowError: NOT_FOUND, FORBIDDEN, INVALID_TRANSITION or INVALID_INPUT.
 export function applyAction(db: DB, ticketId: string, rawAction: unknown, rawActor: unknown): TicketRecord {
-  const action = parse(actionSchema, rawAction, 'action');
-  const actor = parse(actorSchema, rawActor, 'actor');
+  const action = parseInput(actionSchema, rawAction, 'action');
+  const actor = parseInput(actorSchema, rawActor, 'actor');
 
   return transaction(db, () => {
     const ticket = getTicket(db, ticketId);
@@ -112,7 +107,7 @@ export function applyAction(db: DB, ticketId: string, rawAction: unknown, rawAct
           throw new WorkflowError('INVALID_TRANSITION', 'Record a repair attempt before requesting resident confirmation.');
         status = 'awaiting resident confirmation';
         nextAction = 'Please check the repair and confirm';
-        event('confirmation_requested', 'Repair is ready for review; awaiting resident confirmation.');
+        event('confirmation_requested', action.note ?? 'Repair is ready for review; awaiting resident confirmation.');
         break;
       case 'resident_confirm':
         // Invariant: only the ticket's own resident can ever resolve it. Checked again here on purpose.
@@ -124,7 +119,7 @@ export function applyAction(db: DB, ticketId: string, rawAction: unknown, rawAct
           event('resident_confirmed', 'Resident confirmed the repair.');
         } else {
           status = 'awaiting update';
-          nextAction = 'Staff will review your feedback';
+          nextAction = 'Maintenance will review your feedback';
           event('resident_rejected', 'Resident reports the issue persists.');
           event('reopened', 'Case reopened.', undefined, 'system');
         }

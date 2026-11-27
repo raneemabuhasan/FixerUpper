@@ -10,3 +10,9 @@ export function getNow(db: DB): string {
 export function setNow(db: DB, iso: string): void {
   db.prepare('INSERT INTO clock (id, now) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET now = excluded.now').run(iso);
 }
+
+export function advanceClock(db: DB, hours: number): string {
+  const next = new Date(Date.parse(getNow(db)) + hours * 3_600_000).toISOString();
+  setNow(db, next);
+  return next;
+}

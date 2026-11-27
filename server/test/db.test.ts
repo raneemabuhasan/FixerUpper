@@ -36,9 +36,9 @@ describe('seed', () => {
     const db = freshDb();
     expect(getNow(db)).toBe(SEED_CLOCK);
     expect(listTicketsForResident(db, 'mina').map(t => [t.id, t.title, t.status])).toEqual([
-      ['RES-101', 'Kitchen faucet dripping', 'awaiting resident confirmation'],
-      ['RES-102', 'Dishwasher not draining', 'assigned'],
       ['RES-103', 'Sticking cabinet door', 'submitted'],
+      ['RES-102', 'Dishwasher not draining', 'assigned'],
+      ['RES-101', 'Kitchen faucet dripping', 'awaiting resident confirmation'],
     ]);
     expect(eventTypes(db, 'RES-101')).toEqual(['created', 'repair_attempted']);
     expect(eventTypes(db, 'RES-102')).toEqual(['created']);
