@@ -4,3 +4,4 @@ dist/
 .DS_Store
 FixerUpperPlan.docx
 resident-reference.*
+server/data/
