@@ -19,3 +19,7 @@ Express + TypeScript API on Node's built-in `node:sqlite`. It holds the ticket w
 - `src/workflow/tickets.service.ts`, `src/workflow/followups.service.ts`: services shared by the routes and the AI tools
 - `src/db/`: connection, migrations, seed, reset, queries
 - `test/`: in-memory and temp-file DB tests
+
+## AI coordinator (Dev 3)
+
+`src/ai/` and `src/routes/assistant.ts`: the resident chat assistant. Set `ANTHROPIC_API_KEY` in a root `.env` file. See [docs/AI.md](../docs/AI.md).

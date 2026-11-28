@@ -3,6 +3,13 @@ import { DEFAULT_DB_PATH } from './db/connection.ts';
 import { initDatabase } from './db/init.ts';
 import { processDueFollowUps } from './workflow/followups.service.ts';
 
+// Optional local secrets such as ANTHROPIC_API_KEY. `.env*` is gitignored.
+try {
+  process.loadEnvFile('.env');
+} catch {
+  // No .env file: the assistant reports itself unavailable and everything else works.
+}
+
 const PORT = Number(process.env.PORT ?? 3001);
 const FOLLOW_UP_INTERVAL_MS = 30_000;
 

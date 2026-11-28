@@ -13,6 +13,7 @@
     "db:reset": "tsx server/src/db/reset.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
     "@vitejs/plugin-react": "latest",
     "express": "^5.3.0",
     "react": "latest",
