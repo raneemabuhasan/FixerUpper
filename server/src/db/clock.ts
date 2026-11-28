@@ -1,0 +1,22 @@
+import type { DB } from './connection.ts';
+
+// Simulated "now" for the demo. All workflow timestamps come from here.
+export function getNow(db: DB): string {
+  const row = db.prepare('SELECT now FROM clock WHERE id = 1').get() as { now: string } | undefined;
+  if (!row) throw new Error('Clock is not initialised. Run `npm run db:reset`.');
+  return row.now;
+}
+
+export function setNow(db: DB, iso: string): void {
+  db.prepare('INSERT INTO clock (id, now) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET now = excluded.now').run(iso);
+}
+
+export function addHours(iso: string, hours: number): string {
+  return new Date(Date.parse(iso) + hours * 3_600_000).toISOString();
+}
+
+export function advanceClock(db: DB, hours: number): string {
+  const next = addHours(getNow(db), hours);
+  setNow(db, next);
+  return next;
+}
