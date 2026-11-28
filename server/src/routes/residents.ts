@@ -6,6 +6,7 @@ import { body, params } from '../http.ts';
 import {
   createTicket, createTicketInput, getResidentTicket, linkDuplicate, listTicketsForResidentView, reportTextSchema, residentAction,
 } from '../workflow/tickets.service.ts';
+import { getResidentToolOutcomes } from '../workflow/followups.service.ts';
 import { noteSchema } from '../workflow/transitions.ts';
 
 const confirmBody = z.object({ resolved: z.boolean() });
@@ -50,6 +51,11 @@ export function residentRoutes(db: DB) {
     const { residentId, id } = params(req, 'residentId', 'id');
     const { reason } = body(req, cancelBody);
     res.json(residentAction(db, residentId, id, { type: 'cancel', reason }));
+  });
+
+  r.get('/residents/:residentId/tickets/:id/tool-outcomes', (req, res) => {
+    const { residentId, id } = params(req, 'residentId', 'id');
+    res.json(getResidentToolOutcomes(db, residentId, id));
   });
 
   return r;

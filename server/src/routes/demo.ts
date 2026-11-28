@@ -4,6 +4,7 @@ import type { DB } from '../db/connection.ts';
 import { advanceClock, getNow } from '../db/clock.ts';
 import { resetDatabase } from '../db/reset.ts';
 import { body } from '../http.ts';
+import { processDueFollowUps } from '../workflow/followups.service.ts';
 
 const advanceBody = z.object({ hours: z.number().positive().max(24 * 365) });
 
@@ -17,8 +18,7 @@ export function demoRoutes(db: DB) {
   r.post('/clock/advance', (req, res) => {
     const { hours } = body(req, advanceBody);
     const clock = advanceClock(db, hours);
-    // Phase 3: process follow-ups that became due here.
-    res.json({ clock });
+    res.json({ clock, processed: processDueFollowUps(db) });
   });
 
   r.post('/demo/reset', (_req, res) => {

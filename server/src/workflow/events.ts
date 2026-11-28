@@ -11,8 +11,10 @@ export const EVENT_TYPES = [
   'reopened',
   'cancelled',
   'duplicate_linked',
+  'follow_up_scheduled',
   'follow_up_sent',
   'escalated',
+  'escalation_reviewed',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

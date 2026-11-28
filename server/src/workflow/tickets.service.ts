@@ -3,72 +3,14 @@
 import { z } from 'zod';
 import { transaction, type DB } from '../db/connection.ts';
 import { getNow } from '../db/clock.ts';
-import { getResident } from '../db/people.ts';
-import {
-  getTicket, getTicketForResident, insertTicket, listAllTickets, listTicketsForResident, nextTicketId, touchTicket,
-  type TicketRecord,
-} from '../db/tickets.ts';
-import { appendEvent, listEvents, type ActorType, type EventKind, type EventType } from './events.ts';
-import { WorkflowError, parseInput } from './errors.ts';
-import { isTerminal, type Status } from './status.ts';
+import { getTicket, insertTicket, listAllTickets, listTicketsForResident, nextTicketId, touchTicket } from '../db/tickets.ts';
+import { appendEvent } from './events.ts';
+import { parseInput } from './errors.ts';
+import { requireOpen, requireResident, requireResidentTicket } from './scope.ts';
 import { applyAction, type Action } from './transitions.ts';
+import { toView, type StaffTicketView, type TicketView } from './view.ts';
 
-// Superset of shared/types.ts Ticket: the frontend can use it without type changes.
-export interface TicketEventView {
-  at: string;
-  text: string;
-  kind: EventKind;
-  id: number;
-  type: EventType;
-  actorType: ActorType;
-  actorId: string | null;
-}
-
-export interface TicketView {
-  id: string;
-  residentId: string;
-  title: string;
-  category: string;
-  location: string;
-  description: string;
-  status: Status;
-  updatedAt: string;
-  nextAction: string;
-  events: TicketEventView[];
-  createdAt: string;
-  assigneeId: string | null;
-  escalated: boolean;
-  nextFollowUpAt: string | null;
-}
-
-export interface StaffTicketView extends TicketView {
-  residentName: string;
-  residentUnit: string;
-}
-
-function toView(db: DB, t: TicketRecord): TicketView {
-  return {
-    id: t.id, residentId: t.residentId, title: t.title, category: t.category, location: t.location,
-    description: t.description, status: t.status, updatedAt: t.updatedAt, nextAction: t.nextAction,
-    events: listEvents(db, t.id).map(e => ({
-      at: e.at, text: e.text, kind: e.kind, id: e.id, type: e.type, actorType: e.actorType, actorId: e.actorId,
-    })),
-    createdAt: t.createdAt, assigneeId: t.assigneeId, escalated: t.escalatedAt !== null, nextFollowUpAt: t.nextFollowUpAt,
-  };
-}
-
-function requireResident(db: DB, residentId: string) {
-  const resident = getResident(db, residentId);
-  if (!resident) throw new WorkflowError('NOT_FOUND', `Resident ${residentId} not found.`);
-  return resident;
-}
-
-function requireResidentTicket(db: DB, ticketId: string, residentId: string): TicketRecord {
-  requireResident(db, residentId);
-  const ticket = getTicketForResident(db, ticketId, residentId);
-  if (!ticket) throw new WorkflowError('NOT_FOUND', `Ticket ${ticketId} not found.`);
-  return ticket;
-}
+export type { TicketEventView, TicketView, StaffTicketView } from './view.ts';
 
 // ---- Resident reads ----
 
@@ -120,8 +62,7 @@ export function linkDuplicate(db: DB, ticketId: string, residentId: string, repo
   const text = parseInput(reportTextSchema, reportText, 'reportText');
   return transaction(db, () => {
     const ticket = requireResidentTicket(db, ticketId, residentId);
-    if (isTerminal(ticket.status))
-      throw new WorkflowError('INVALID_TRANSITION', `Ticket ${ticketId} is ${ticket.status}; a new report cannot be linked to it.`);
+    requireOpen(ticket, 'a new report cannot be linked to it');
     const at = getNow(db);
     const link = db.prepare(
       'INSERT INTO duplicate_links (ticket_id, linked_report_text, confirmed_by_resident_id, at) VALUES (?, ?, ?, ?)',
@@ -153,15 +94,4 @@ export function staffAction(db: DB, staffId: string, ticketId: string, action: S
 
 export function listStaffTickets(db: DB): StaffTicketView[] {
   return listAllTickets(db).map(t => ({ ...toView(db, t), residentName: t.residentName, residentUnit: t.residentUnit }));
-}
-
-export function getQueues(db: DB) {
-  const now = getNow(db);
-  const open = listStaffTickets(db).filter(t => !isTerminal(t.status));
-  return {
-    open,
-    awaitingConfirmation: open.filter(t => t.status === 'awaiting resident confirmation'),
-    overdue: open.filter(t => t.nextFollowUpAt !== null && t.nextFollowUpAt < now),
-    managerQueue: open.filter(t => t.escalated),
-  };
 }

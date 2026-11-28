@@ -4,6 +4,7 @@ import { getNow } from '../db/clock.ts';
 import { getTicket, type TicketRecord } from '../db/tickets.ts';
 import { appendEvent, type EventKind, type EventType } from './events.ts';
 import { WorkflowError, parseInput } from './errors.ts';
+import { onStatusChange } from './followups.service.ts';
 import { OPEN_STATUSES, isTerminal, type Status } from './status.ts';
 
 export const actorSchema = z.object({
@@ -75,8 +76,9 @@ export function applyAction(db: DB, ticketId: string, rawAction: unknown, rawAct
       throw new WorkflowError('INVALID_TRANSITION', `Cannot ${action.type} a ticket that is ${ticket.status}.`);
 
     const at = getNow(db);
+    let eventId = 0;
     const event = (type: EventType, text: string, data?: unknown, kind = KIND[actor.type]) =>
-      appendEvent(db, { ticketId, at, kind, actorType: actor.type, actorId: actor.id, type, text, data });
+      (eventId = appendEvent(db, { ticketId, at, kind, actorType: actor.type, actorId: actor.id, type, text, data }));
 
     let status: Status;
     let nextAction: string;
@@ -131,11 +133,12 @@ export function applyAction(db: DB, ticketId: string, rawAction: unknown, rawAct
         break;
     }
 
-    db.prepare(
-      `UPDATE tickets SET status = ?, next_action = ?, assignee_id = ?, updated_at = ?, next_follow_up_at = ?
-       WHERE id = ?`,
-    ).run(status, nextAction, assigneeId, at, isTerminal(status) ? null : ticket.nextFollowUpAt, ticketId);
+    db.prepare('UPDATE tickets SET status = ?, next_action = ?, assignee_id = ?, updated_at = ? WHERE id = ?')
+      .run(status, nextAction, assigneeId, at, ticketId);
 
+    const updated = getTicket(db, ticketId)!;
+    // Supersede the old follow-up cycle and schedule the new one (keys include eventId).
+    if (status !== ticket.status) onStatusChange(db, updated, at, { action: action.type, eventId });
     return getTicket(db, ticketId)!;
   });
 }

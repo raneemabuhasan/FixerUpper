@@ -32,9 +32,9 @@ All samples below were captured from a running server right after `POST /api/dem
 | `createdAt` | string | extra |
 | `assigneeId` | string \| null | extra |
 | `escalated` | boolean | extra; escalation is a flag, not a status |
-| `nextFollowUpAt` | string \| null | extra (Phase 3) |
+| `nextFollowUpAt` | string \| null | extra: earliest pending follow-up, or null |
 
-Event `type` is one of `created`, `assigned`, `inspected`, `repair_attempted`, `confirmation_requested`, `resident_confirmed`, `resident_rejected`, `reopened`, `cancelled`, `duplicate_linked`, `follow_up_sent`, `escalated`.
+Event `type` is one of `created`, `assigned`, `inspected`, `repair_attempted`, `confirmation_requested`, `resident_confirmed`, `resident_rejected`, `reopened`, `cancelled`, `duplicate_linked`, `follow_up_scheduled`, `follow_up_sent`, `escalated`, `escalation_reviewed`.
 
 All timestamps come from the **simulated demo clock** (`GET /api/clock`), not wall time.
 
@@ -51,6 +51,21 @@ any open status --resident cancels--> cancelled          (nothing leaves resolve
 
 - `request-confirmation` requires a `repair` logged since the ticket was last reopened.
 - **Only the ticket's own resident can resolve it.** No staff route can resolve a ticket, and none will be added.
+
+### Follow-ups and escalation
+
+Follow-ups are scheduled on the simulated clock and fire when `POST /api/clock/advance` runs, or on the server's 30-second timer.
+
+| Trigger | +24h | Escalation |
+|---|---|---|
+| `assign` | Technician reminder: "No update logged" | +48h: "No update logged within 48 hours of assignment" |
+| `request-confirmation` | Resident reminder: "Please confirm whether the repair worked" | +72h: "Resident has not confirmed the repair within 72 hours" |
+
+- **Any status change** (including resolve, cancel and reopen) supersedes the ticket's pending follow-ups, so they never fire. A reopened ticket starts a new cycle at its next `request-confirmation`.
+- Each follow-up has a `due_key` like `confirm-reminder:<eventId>`, where `<eventId>` is the event that scheduled it. Each follow-up fires at most once, no matter how often processing runs.
+- **Silence never resolves a ticket.** After a week with no answer, a ticket is still `awaiting resident confirmation`, with one reminder and one escalation sent.
+- **Escalation is a flag, not a status.** It sets `escalated: true` and puts the ticket in the manager queue until a manager reviews it.
+- A reminder event's `at` is the time it was due, so the timeline reads naturally even after a big clock jump.
 
 ---
 
@@ -239,6 +254,23 @@ Request: `{"reason":"Fixed it myself"}` on RES-103. Excerpt:
                  "id": 9, "type": "cancelled", "actorType": "resident", "actorId": "mina" } }
 ```
 
+### `GET /api/residents/:residentId/tickets/:id/tool-outcomes`
+Returns what the AI tools did on this ticket, oldest first. The list is written by `recordToolOutcome` (see the Dev 3 section). Errors: `400`, `404` (including another resident's ticket).
+```json
+[
+  {
+    "id": 1,
+    "ticketId": "RES-104",
+    "name": "find_duplicates",
+    "args": { "query": "bathroom sink drain" },
+    "success": true,
+    "explanation": "One open ticket matched: RES-104.",
+    "at": "2026-01-14T10:00:00.000Z"
+  }
+]
+```
+`GET /api/residents/alex/tickets/RES-104/tool-outcomes` returns **404**: `{"error":{"code":"NOT_FOUND","message":"Ticket RES-104 not found."}}`
+
 ---
 
 ## Staff routes
@@ -266,12 +298,56 @@ Returns every resident's tickets, newest updated first, with `residentName` and 
 ### `GET /api/staff/queues`
 Returns `{ open, awaitingConfirmation, overdue, managerQueue }`. Each is an array of staff tickets, in the same shape as above.
 - `open`: every ticket that isn't resolved or cancelled
-- `overdue`: `nextFollowUpAt` is earlier than the clock
-- `managerQueue`: `escalated` tickets
+- `overdue`: an open ticket that has a reminder that fired with no status change since, or a `nextFollowUpAt` earlier than the clock
+- `managerQueue`: every `escalated` ticket, until a manager reviews it
 
-`overdue` and `managerQueue` stay empty until Phase 3. Excerpt, IDs only:
+Excerpt, IDs only, taken after RES-104 was assigned and the clock advanced 49h:
 ```json
-{ "open": ["RES-102", "RES-101"], "awaitingConfirmation": [], "overdue": [], "managerQueue": [] }
+{ "open": ["RES-104", "RES-103", "RES-102", "RES-101"], "awaitingConfirmation": ["RES-101"], "overdue": ["RES-104"], "managerQueue": ["RES-104"] }
+```
+
+### `GET /api/staff/:staffId/queue`
+Returns a technician's open assigned tickets, plus reminders addressed to them that they haven't acted on. A reminder counts as acted on once the ticket's status changes, for example when they log an inspection. Errors: `400`, `404` (unknown staff).
+
+Sample taken after assign and a 25h advance. Excerpt: each ticket is a full staff ticket, cut down here to `id`, `status` and `nextFollowUpAt`.
+```json
+{
+  "staff": { "id": "tech-sam", "name": "Sam Rivera", "role": "technician" },
+  "tickets": [
+    { "id": "RES-104", "status": "assigned", "nextFollowUpAt": "2026-01-14T09:00:00.000Z" },
+    { "id": "RES-102", "status": "assigned", "nextFollowUpAt": null },
+    { "id": "RES-101", "status": "awaiting resident confirmation", "nextFollowUpAt": null }
+  ],
+  "reminders": [
+    { "messageId": 1, "followUpId": 1, "ticketId": "RES-104",
+      "text": "RES-104 \"Bathroom sink drains slowly\": No update logged.", "at": "2026-01-13T09:00:00.000Z" }
+  ]
+}
+```
+
+### `POST /api/staff/tickets/:id/escalation/review`
+Body: `{ staffId, note }`. This is the **manager-only** human review of an escalation. It records an `escalation_reviewed` event and clears `escalated`. The status doesn't change. Errors:
+- `400` bad body
+- `403` technician or unknown staff (`"Only a manager can review an escalation."`)
+- `404` unknown ticket
+- `409` the ticket isn't escalated (`"Ticket RES-104 is not escalated."`)
+
+Excerpt: last three events only.
+```json
+{
+  "id": "RES-104",
+  "status": "assigned",
+  "escalated": false,
+  "nextFollowUpAt": null,
+  "events": [
+    { "at": "2026-01-13T09:00:00.000Z", "text": "Reminder sent to Sam Rivera (technician): No update logged.", "kind": "system",
+      "id": 7, "type": "follow_up_sent", "actorType": "system", "actorId": "follow-up-processor" },
+    { "at": "2026-01-14T09:00:00.000Z", "text": "Escalated to a manager: No update logged within 48 hours of assignment.", "kind": "system",
+      "id": 8, "type": "escalated", "actorType": "system", "actorId": "follow-up-processor" },
+    { "at": "2026-01-14T10:00:00.000Z", "text": "Escalation reviewed by Jordan Lee: Called Sam; visit booked for today.", "kind": "worker",
+      "id": 9, "type": "escalation_reviewed", "actorType": "staff", "actorId": "mgr-jordan" }
+  ]
+}
 ```
 
 ### `POST /api/staff/tickets/:id/assign`
@@ -325,12 +401,47 @@ An unknown `staffId` returns **403**:
 ```
 
 ### `POST /api/clock/advance`
-Body: `{ hours: number }`, which must be positive and at most 8760. In Phase 3 this will also process follow-ups that come due. Errors: `400`.
+Body: `{ hours: number }`, which must be positive and at most 8760. Moves the clock forward, then fires every follow-up that is now due. `processed` lists what fired, oldest due first, so the demo can show it. Errors: `400`.
 
-Request: `{"hours":48}`
+Request: `{"hours":25}`, sent 25h after RES-104 was assigned.
 ```json
-{ "clock": "2026-01-14T09:00:00.000Z" }
+{
+  "clock": "2026-01-13T10:00:00.000Z",
+  "processed": [
+    {
+      "followUpId": 1,
+      "ticketId": "RES-104",
+      "dueKey": "assign-reminder:6",
+      "dueAt": "2026-01-13T09:00:00.000Z",
+      "action": "reminder",
+      "recipientType": "staff",
+      "recipientId": "tech-sam",
+      "recipientName": "Sam Rivera",
+      "text": "Reminder sent to Sam Rivera (technician): No update logged."
+    }
+  ]
+}
 ```
+Request: `{"hours":24}`, sent next.
+```json
+{
+  "clock": "2026-01-14T10:00:00.000Z",
+  "processed": [
+    {
+      "followUpId": 2,
+      "ticketId": "RES-104",
+      "dueKey": "assign-escalate:6",
+      "dueAt": "2026-01-14T09:00:00.000Z",
+      "action": "escalate",
+      "recipientType": "manager",
+      "recipientId": null,
+      "recipientName": "Manager queue",
+      "text": "Escalated to a manager: No update logged within 48 hours of assignment."
+    }
+  ]
+}
+```
+If nothing is due, `processed` is `[]`.
 
 ### `POST /api/demo/reset`
 Drops all data, re-runs migrations and re-seeds. No body.
@@ -383,6 +494,16 @@ Import these from `server/src/workflow/tickets.service.ts`. They are the same fu
 | `listTicketsForResidentView(db, residentId)` | Finding candidate duplicates and answering status questions. Scoped to that resident only. |
 | `getResidentTicket(db, residentId, ticketId)` | Reading one ticket. Throws NOT_FOUND if it belongs to someone else. |
 
-To log what a tool did, write rows to the `messages` and `tool_outcomes` tables (the schema is already there).
+Follow-up and escalation services are in `server/src/workflow/followups.service.ts`. Each one checks the resident's scope, rejects resolved and cancelled tickets with `INVALID_TRANSITION`, and records who called it. Pass `source` as `{ type: 'ai' | 'system', id }`; it defaults to `{ type: 'ai', id: 'assistant' }`.
+
+| Function | Use for |
+|---|---|
+| `scheduleFollowUp(db, ticketId, residentId, { hoursFromNow, action: 'reminder' \| 'escalate', reason }, source?)` | "I'll check back with you tomorrow." A `reminder` goes to the resident with `reason` as its text. An `escalate` puts the ticket in the manager queue when due. Writes a `follow_up_scheduled` event. `hoursFromNow` can be up to 720. |
+| `sendSimulatedFollowUp(db, ticketId, residentId, { text }, source?)` | Sends a message to the resident immediately, and writes a `follow_up_sent` event. |
+| `routeToManager(db, ticketId, residentId, { reason, urgent? }, source?)` | Flags the ticket for a manager and writes an `escalated` event. `reason` is saved for staff only. **The resident-facing text is always fixed.** With `urgent: true` it is `URGENT_HAZARD_MESSAGE`: *"This may be an urgent hazard. A manager has been notified. If there is immediate danger, leave the area and call 911."* Otherwise it is *"A manager has been asked to review this request."* Model text is never shown to the resident here. |
+| `recordToolOutcome(db, { ticketId?, name, args?, success, explanation })` | Log every tool call. `args` is any JSON value. Shown by `GET .../tool-outcomes`. |
+| `getToolOutcomes(db, ticketId)` | Read back the outcomes for one ticket. |
+
+None of these change a ticket's status. They can't resolve a ticket, and the tests check that.
 
 **Resident confirmation is intentionally NOT available as a tool.** Resolving a ticket requires the resident to explicitly click confirm (`POST .../confirm`). The state machine rejects resolution by any `ai`, `staff` or `system` actor with `FORBIDDEN`, so an AI tool can't close a ticket even by mistake. Don't wrap `residentAction` or `applyAction` in a tool.

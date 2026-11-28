@@ -3,7 +3,8 @@ import { z } from 'zod';
 import type { DB } from '../db/connection.ts';
 import { listStaff } from '../db/people.ts';
 import { body, params } from '../http.ts';
-import { getQueues, listStaffTickets, staffAction } from '../workflow/tickets.service.ts';
+import { getQueues, getTechnicianQueue, reviewEscalation } from '../workflow/followups.service.ts';
+import { listStaffTickets, staffAction } from '../workflow/tickets.service.ts';
 import { noteSchema } from '../workflow/transitions.ts';
 
 // staffId is checked against the staff table by the state machine (unknown id -> 403).
@@ -28,6 +29,11 @@ export function staffRoutes(db: DB) {
     res.json(getQueues(db));
   });
 
+  r.get('/staff/:staffId/queue', (req, res) => {
+    const { staffId } = params(req, 'staffId');
+    res.json(getTechnicianQueue(db, staffId));
+  });
+
   r.post('/staff/tickets/:id/assign', (req, res) => {
     const { id } = params(req, 'id');
     const b = body(req, assignBody);
@@ -50,6 +56,13 @@ export function staffRoutes(db: DB) {
     const { id } = params(req, 'id');
     const b = body(req, requestConfirmationBody);
     res.json(staffAction(db, b.staffId, id, { type: 'request_confirmation', note: b.note }));
+  });
+
+  // Manager-only human review of an escalation. Clears the flag; status is unchanged.
+  r.post('/staff/tickets/:id/escalation/review', (req, res) => {
+    const { id } = params(req, 'id');
+    const b = body(req, noteBody);
+    res.json(reviewEscalation(db, b.staffId, id, b.note));
   });
 
   return r;

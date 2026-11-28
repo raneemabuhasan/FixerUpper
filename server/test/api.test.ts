@@ -242,7 +242,7 @@ describe('validation', () => {
 describe('demo routes', () => {
   test('clock and advance', async () => {
     expect((await get('/api/clock')).body).toEqual({ clock: SEED_CLOCK });
-    expect((await post('/api/clock/advance', { hours: 49.5 })).body).toEqual({ clock: '2026-01-14T10:30:00.000Z' });
+    expect((await post('/api/clock/advance', { hours: 49.5 })).body).toEqual({ clock: '2026-01-14T10:30:00.000Z', processed: [] });
     expect((await get('/api/clock')).body).toEqual({ clock: '2026-01-14T10:30:00.000Z' });
   });
 

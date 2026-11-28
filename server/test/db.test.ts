@@ -13,7 +13,7 @@ import { dumpAll, eventTypes, freshDb, mina, tech } from './helpers.ts';
 describe('migrations', () => {
   test('are tracked and only applied once', () => {
     const db = openDatabase(':memory:');
-    expect(migrate(db)).toEqual(['001_init.sql']);
+    expect(migrate(db)).toEqual(['001_init.sql', '002_follow_ups.sql']);
     expect(migrate(db)).toEqual([]);
   });
 
