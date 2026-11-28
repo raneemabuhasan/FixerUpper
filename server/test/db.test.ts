@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import type { AddressInfo } from 'node:net';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { openDatabase } from '../src/db/connection.ts';
+import { initDatabase } from '../src/db/init.ts';
+import { advanceClock } from '../src/db/clock.ts';
+import { listEvents } from '../src/workflow/events.ts';
 import { migrate } from '../src/db/migrate.ts';
 import { resetDatabase } from '../src/db/reset.ts';
 import { SEED_CLOCK } from '../src/db/seed.ts';
@@ -28,6 +34,30 @@ describe('migrations', () => {
     const insert = db.prepare("INSERT INTO follow_ups (ticket_id, due_key, due_at, action) VALUES ('RES-101', 'confirm-48h', ?, 'reminder')");
     insert.run(SEED_CLOCK);
     expect(() => insert.run(SEED_CLOCK)).toThrow(/UNIQUE/);
+  });
+});
+
+describe('restart', () => {
+  test('data survives a server restart: no re-migration, no re-seed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'resolve-restart-'));
+    const path = join(dir, 'resolve.db');
+    try {
+      const first = initDatabase(path);
+      applyAction(first, 'RES-101', { type: 'resident_confirm', resolved: false }, mina);
+      advanceClock(first, 5);
+      const events = listEvents(first, 'RES-101');
+      first.close();
+
+      const second = initDatabase(path);
+      expect(migrate(second)).toEqual([]);
+      expect(getTicketForResident(second, 'RES-101', 'mina')?.status).toBe('awaiting update');
+      expect(listEvents(second, 'RES-101')).toEqual(events);
+      expect(getNow(second)).toBe('2026-01-12T14:00:00.000Z');
+      expect(second.prepare('SELECT COUNT(*) AS n FROM residents').get()).toEqual({ n: 2 });
+      second.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
