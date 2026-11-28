@@ -91,14 +91,72 @@ describe('assignment follow-ups', () => {
     expect((await advance(72)).processed.map((p: { dueKey: string }) => p.dueKey.split(':')[0])).toEqual(['assign-reminder', 'assign-escalate']);
   });
 
-  test('inspect before +24h supersedes pending follow-ups; nothing fires later', async () => {
+  test('inspect before +24h supersedes the assign follow-ups; they never fire', async () => {
     await assign();
     await advance(10);
     await post('/api/staff/tickets/RES-103/inspect', { ...tech, note: 'Hinge loose.' });
-    expect(followUps('RES-103').every(f => f.superseded_at === '2026-01-12T19:00:00.000Z' && f.processed_at === null)).toBe(true);
-    expect((await advance(24 * 14)).processed).toEqual([]);
-    expect(count('RES-103', 'follow_up_sent') + count('RES-103', 'escalated')).toBe(0);
-    expect(getTicket(db, 'RES-103')!.nextFollowUpAt).toBeNull();
+    const assignCycle = followUps('RES-103').filter(f => f.due_key.startsWith('assign-'));
+    expect(assignCycle).toHaveLength(2);
+    expect(assignCycle.every(f => f.superseded_at === '2026-01-12T19:00:00.000Z' && f.processed_at === null)).toBe(true);
+    const fired = (await advance(24 * 14)).processed.map((p: { dueKey: string }) => p.dueKey.split(':')[0]);
+    expect(fired).toEqual(['stalled-reminder', 'stalled-escalate']);
+  });
+});
+
+describe('stalled-ticket follow-ups (entering awaiting update)', () => {
+  const pending = (id: string) => followUps(id).filter(f => f.processed_at === null && f.superseded_at === null).map(f => f.due_key.split(':')[0]);
+
+  test('assign then inspect leaves only the stalled cycle pending (no double-scheduling)', async () => {
+    await assign();
+    expect(pending('RES-103')).toEqual(['assign-reminder', 'assign-escalate']);
+    const res = await post('/api/staff/tickets/RES-103/inspect', { ...tech, note: 'Hinge loose.' });
+    const eventId = res.body.events.at(-1).id;
+    expect(followUps('RES-103').filter(f => f.superseded_at === null).map(f => [f.due_key, f.due_at])).toEqual([
+      [`stalled-reminder:${eventId}`, '2026-01-13T09:00:00.000Z'],
+      [`stalled-escalate:${eventId}`, '2026-01-14T09:00:00.000Z'],
+    ]);
+    expect(res.body.nextFollowUpAt).toBe('2026-01-13T09:00:00.000Z');
+  });
+
+  test('inspect -> +25h fires exactly one technician reminder', async () => {
+    await post('/api/staff/tickets/RES-102/inspect', { ...tech, note: 'Drain hose kinked.' });
+    const fired = (await advance(25)).processed;
+    expect(fired.map((p: { dueKey: string; recipientId: string; text: string }) => [p.dueKey.split(':')[0], p.recipientId, p.text])).toEqual([
+      ['stalled-reminder', 'tech-sam', 'Reminder sent to Sam Rivera (technician): Reopened/inspected with no new repair logged.'],
+    ]);
+    expect((await advance(1)).processed).toEqual([]);
+    for (let i = 0; i < 3; i++) processDueFollowUps(db);
+    expect(count('RES-102', 'follow_up_sent')).toBe(1);
+    expect(status('RES-102')).toBe('awaiting update');
+  });
+
+  test('a first repair from assigned also starts the stalled cycle', async () => {
+    await post('/api/staff/tickets/RES-102/repair', { ...tech, note: 'Cleared drain.' });
+    expect(pending('RES-102')).toEqual(['stalled-reminder', 'stalled-escalate']);
+  });
+
+  test('reject -> +49h escalates once, status unchanged', async () => {
+    await post('/api/residents/mina/tickets/RES-101/confirm', { resolved: false });
+    expect(pending('RES-101')).toEqual(['stalled-reminder', 'stalled-escalate']);
+    const fired = (await advance(49)).processed.map((p: { action: string }) => p.action);
+    expect(fired).toEqual(['reminder', 'escalate']);
+    await advance(24 * 7);
+    processDueFollowUps(db);
+    expect(count('RES-101', 'escalated')).toBe(1);
+    expect(status('RES-101')).toBe('awaiting update');
+    expect((await get('/api/staff/queues')).body.managerQueue.map((t: { id: string }) => t.id)).toEqual(['RES-101']);
+  });
+
+  test('a repair logged while already awaiting update neither supersedes nor duplicates', async () => {
+    await post('/api/staff/tickets/RES-102/inspect', { ...tech, note: 'Drain hose kinked.' });
+    const before = followUps('RES-102');
+    await advance(10);
+    await post('/api/staff/tickets/RES-102/repair', { ...tech, note: 'Straightened hose.' });
+    await post('/api/staff/tickets/RES-102/repair', { ...tech, note: 'Replaced hose clamp.' });
+    expect(followUps('RES-102')).toEqual(before);
+    const fired = (await advance(15)).processed.map((p: { dueKey: string }) => p.dueKey);
+    expect(fired).toEqual([before[0].due_key]);
+    expect(count('RES-102', 'follow_up_sent')).toBe(1);
   });
 });
 

@@ -8,7 +8,7 @@ import { getTicket, listAllTickets, type TicketRecord } from '../db/tickets.ts';
 import { appendEvent, type ActorType } from './events.ts';
 import { WorkflowError, parseInput } from './errors.ts';
 import { requireOpen, requireResidentTicket } from './scope.ts';
-import { isTerminal } from './status.ts';
+import { isTerminal, type Status } from './status.ts';
 import type { ActionType } from './transitions.ts';
 import { toView, type StaffTicketView, type TicketView } from './view.ts';
 
@@ -21,15 +21,23 @@ type RecipientType = 'resident' | 'staff' | 'manager';
 type FollowUpAction = 'reminder' | 'escalate';
 interface Source { type: ActorType; id: string }
 
-// Scheduled automatically when a ticket enters a status via these actions.
-export const FOLLOW_UP_RULES: Partial<Record<ActionType, readonly {
+// Scheduled automatically when a ticket enters one of these statuses. Entering any status first
+// supersedes the previous cycle, so these never stack (e.g. assign's cycle ends on the first inspection).
+export const FOLLOW_UP_RULES: Partial<Record<Status, readonly {
   key: string; hours: number; action: FollowUpAction; recipient: 'technician' | 'resident' | 'manager'; message: string;
 }[]>> = {
-  assign: [
+  // Entered via assign.
+  assigned: [
     { key: 'assign-reminder', hours: 24, action: 'reminder', recipient: 'technician', message: 'No update logged' },
     { key: 'assign-escalate', hours: 48, action: 'escalate', recipient: 'manager', message: 'No update logged within 48 hours of assignment' },
   ],
-  request_confirmation: [
+  // Entered via inspected_only, repair_attempted from assigned, or a resident rejection. A stalled-ticket check.
+  'awaiting update': [
+    { key: 'stalled-reminder', hours: 24, action: 'reminder', recipient: 'technician', message: 'Reopened/inspected with no new repair logged' },
+    { key: 'stalled-escalate', hours: 48, action: 'escalate', recipient: 'manager', message: 'No new repair logged within 48 hours' },
+  ],
+  // Entered via request_confirmation.
+  'awaiting resident confirmation': [
     { key: 'confirm-reminder', hours: 24, action: 'reminder', recipient: 'resident', message: 'Please confirm whether the repair worked' },
     { key: 'confirm-escalate', hours: 72, action: 'escalate', recipient: 'manager', message: 'Resident has not confirmed the repair within 72 hours' },
   ],
@@ -84,7 +92,7 @@ export function onStatusChange(db: DB, ticket: TicketRecord, at: string, trigger
   db.prepare("UPDATE follow_ups SET answered_at = ? WHERE ticket_id = ? AND action = 'reminder' AND processed_at IS NOT NULL AND answered_at IS NULL")
     .run(at, ticket.id);
   if (!isTerminal(ticket.status)) {
-    for (const r of FOLLOW_UP_RULES[trigger.action] ?? []) {
+    for (const r of FOLLOW_UP_RULES[ticket.status] ?? []) {
       insertFollowUp(db, {
         ticketId: ticket.id, dueKey: `${r.key}:${trigger.eventId}`, dueAt: addHours(at, r.hours), action: r.action,
         recipientType: r.recipient === 'technician' ? 'staff' : r.recipient,

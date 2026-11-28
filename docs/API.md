@@ -56,12 +56,38 @@ any open status --resident cancels--> cancelled          (nothing leaves resolve
 
 Follow-ups are scheduled on the simulated clock and fire when `POST /api/clock/advance` runs, or on the server's 30-second timer.
 
-| Trigger | +24h | Escalation |
-|---|---|---|
-| `assign` | Technician reminder: "No update logged" | +48h: "No update logged within 48 hours of assignment" |
-| `request-confirmation` | Resident reminder: "Please confirm whether the repair worked" | +72h: "Resident has not confirmed the repair within 72 hours" |
+A follow-up cycle starts whenever a ticket **enters** one of these statuses:
 
-- **Any status change** (including resolve, cancel and reopen) supersedes the ticket's pending follow-ups, so they never fire. A reopened ticket starts a new cycle at its next `request-confirmation`.
+| Status entered | Entered via | +24h | Escalation |
+|---|---|---|---|
+| `assigned` | `assign` | Technician reminder: "No update logged" | +48h: "No update logged within 48 hours of assignment" |
+| `awaiting update` | `inspect`, a first `repair` from `assigned`, or a resident rejection | Technician reminder: "Reopened/inspected with no new repair logged" | +48h: "No new repair logged within 48 hours" |
+| `awaiting resident confirmation` | `request-confirmation` | Resident reminder: "Please confirm whether the repair worked" | +72h: "Resident has not confirmed the repair within 72 hours" |
+
+- **Any status change** (including resolve, cancel and reopen) supersedes the ticket's pending follow-ups before the new cycle is scheduled, so cycles never stack. For example, the first inspection ends the `assign` cycle.
+- **Updates that keep the status the same don't touch follow-ups.** Logging another `repair` while already `awaiting update` leaves the stalled cycle as it is, with nothing superseded and nothing duplicated.
+- A rejection starts a stalled cycle. The next `request-confirmation` replaces it with a new confirmation cycle.
+
+Sample: resident rejects RES-101, then `POST /api/clock/advance {"hours":25}`:
+```json
+{
+  "clock": "2026-01-13T10:00:00.000Z",
+  "processed": [
+    {
+      "followUpId": 1,
+      "ticketId": "RES-101",
+      "dueKey": "stalled-reminder:6",
+      "dueAt": "2026-01-13T09:00:00.000Z",
+      "action": "reminder",
+      "recipientType": "staff",
+      "recipientId": "tech-sam",
+      "recipientName": "Sam Rivera",
+      "text": "Reminder sent to Sam Rivera (technician): Reopened/inspected with no new repair logged."
+    }
+  ]
+}
+```
+A further 24h fires `stalled-escalate:6` (`"Escalated to a manager: No new repair logged within 48 hours."`). The status stays `awaiting update`.
 - Each follow-up has a `due_key` like `confirm-reminder:<eventId>`, where `<eventId>` is the event that scheduled it. Each follow-up fires at most once, no matter how often processing runs.
 - **Silence never resolves a ticket.** After a week with no answer, a ticket is still `awaiting resident confirmation`, with one reminder and one escalation sent.
 - **Escalation is a flag, not a status.** It sets `escalated: true` and puts the ticket in the manager queue until a manager reviews it.
